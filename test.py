@@ -1,11 +1,7 @@
-from pycparser import c_parser, c_ast, parse_file
-import os
+from pycparser import c_ast, parse_file
 import subprocess
 import re
-
-fake_libc_include = os.path.join(os.path.dirname(__file__), "fake_libc_include")
-
-ast = parse_file("bits.c", use_cpp=True, cpp_args=["-I", fake_libc_include])
+import argparse
 
 
 class FunctionAnalyzer(c_ast.NodeVisitor):
@@ -81,7 +77,7 @@ class FunctionFinder(c_ast.NodeVisitor):
             raise StopIteration
 
 
-true_ans = {
+problem_infos = {
     "bitXor": {"rating": 1, "score": 0, "operation": ["~", "&", "int"], "maxop": 7},
     "samesign": {
         "rating": 2,
@@ -117,6 +113,7 @@ true_ans = {
             "~",
             "unsigned",
             "int",
+            "unsigned int",
         ],
         "maxop": 30,
     },
@@ -153,6 +150,7 @@ true_ans = {
             "==",
             "unsigned",
             "int",
+            "unsigned int",
         ],
         "maxop": 30,
     },
@@ -176,6 +174,7 @@ true_ans = {
             "==",
             "int",
             "unsigned",
+            "unsigned int",
         ],
         "maxop": 30,
     },
@@ -199,6 +198,7 @@ true_ans = {
             "else",
             "int",
             "unsigned",
+            "unsigned int",
         ],
         "maxop": 60,
     },
@@ -223,18 +223,20 @@ true_ans = {
             "&&",
             "int",
             "unsigned",
+            "unsigned int",
         ],
         "maxop": 30,
     },
 }
 
 
-def test_score(function, real_ans):
+def test_legality(ast, function):
     finder = FunctionFinder(function)
     try:
         finder.visit(ast)
     except StopIteration:
         pass
+    problem_info = problem_infos[function]
     analyzer = finder.analyzer
     function_name = analyzer.function_name
     operators_temp = [i for i in analyzer.operators if i != "="]
@@ -246,79 +248,145 @@ def test_score(function, real_ans):
             operators.append("+")
         else:
             operators.append(i)
-    control_strcutures = analyzer.control_structures
-    array_ok = analyzer.has_array
-    if array_ok:
-        print(f"Has Array Error!,name:{function_name},point:{0}")
-        if real_ans[function_name] != 0:
-            real_ans["Total"] -= true_ans[function_name]["rating"]
+
+    illegal = set()
+    if analyzer.has_array:
+        illegal.add("array")
+    for i in operators:
+        if i != "==":
+            i = i.replace("=", "")
+        if i not in problem_info["operation"]:
+            illegal.add(i)
+    for i in analyzer.control_structures:
+        if i not in problem_info["operation"]:
+            illegal.add(i)
+
+    legality_message = []
+
+    if len(illegal) != 0:
+        legality_message.append(f"Using illegal operations: {illegal}.")
+
+    if len(operators) > problem_info["maxop"]:
+        legality_message.append(
+            f"Using excessive operations, you use {len(operators)} > max ops {problem_info['maxop']}."
+        )
+
+    if len(analyzer.type_conversions) != 0:
+        legality_message.append(f"Using type conversion.")
+
+    pass_message = [
+        f"Pass using {len(operators)} operations including {set(operators)} and {set(analyzer.control_structures)}."
+    ]
+
+    return len(legality_message) == 0, legality_message, pass_message
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--legality_only", action="store_true")
+    parser.add_argument("--verbose", "-V", action="store_true")
+    args = parser.parse_args()
+
+    try:
+        subprocess.run(["make", "clean"], check=True)
+        subprocess.run(["make"], check=True)
+        print("Make success.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error while running make: {e}.")
+        exit(1)
+
+    ast = parse_file("bits.c", use_cpp=True)
+
+    results = {
+        function_name: {
+            "correctness": False,
+            "correctness_message": [],
+            "legality": False,
+            "legality_message": [],
+            "legality_pass_message": [],
+        }
+        for function_name in problem_infos.keys()
+    }
+
+    if args.legality_only:
+        for function_name in problem_infos.keys():
+            results[function_name]["correctness"] = False
+            results[function_name]["correctness_message"] = [
+                "Correctness unknown, legality only."
+            ]
     else:
-        flag_operation = 1
-        illegal = []
-        for i in operators:
-            if i != "==":
-                i = i.replace("=", "")
-            if i not in true_ans[function_name]["operation"]:
-                flag_operation = 0
-                illegal.append(i)
-                break
-        for i in control_strcutures:
-            if (
-                i not in true_ans[function_name]["operation"]
-                and i.lower() not in true_ans[function_name]["operation"]
-            ):
-                illegal.append(i)
-                flag_operation = 0
-                break
-        if flag_operation == 0:
-            print(
-                f"Has Illegal operation: {illegal}! name: {function_name}, point: {0}"
+        with open("result.txt", "w") as f:
+            try:
+                subprocess.run(["./btest"], stdout=f, check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"Error while running btest: {e}.")
+                exit(1)
+
+        with open("result.txt", "r") as rd:
+            lines = rd.readlines()
+
+        for line1, line2 in zip(lines, lines[1:] + [""]):
+            body = line1.strip() + line2.strip()
+            if "Score" in line1:  # first line
+                continue
+            if "Total points" in line1:  # last line
+                continue
+            elif "ERROR" in line1:
+                matches = re.findall(r"\b\w+\b|\b\d+\b", line1)
+                function_name = matches[2]
+                results[function_name]["correctness"] = False
+                body = body.replace("ERROR: ", "")
+                body = body.replace("......", ". ")
+                results[function_name]["correctness_message"] = [body]
+            elif "Gives" in line1:
+                continue
+            else:
+                matches = re.findall(r"\b\w+\b|\b\d+\b", line1)
+                function_name = matches[-1]
+                results[function_name]["correctness"] = True
+
+        for function_name in problem_infos.keys():
+            legality, legality_message, legality_pass_message = test_legality(
+                ast, function_name
             )
-            if real_ans[function_name] != 0:
-                real_ans["Total"] -= true_ans[function_name]["rating"]
+            results[function_name]["legality"] = legality
+            results[function_name]["legality_message"] = legality_message
+            results[function_name]["legality_pass_message"] = legality_pass_message
+
+    total_points = 0
+    for function_name, result in results.items():
+        is_pass = result["correctness"] and result["legality"]
+        earn_points = problem_infos[function_name]["rating"] if is_pass else 0
+        msg_header = f"{function_name:<15} {earn_points}/{problem_infos[function_name]['rating']}:"
+        msg_mid = "PASS" if is_pass else "FAIL"
+        msg_bodies = []
+        if not is_pass:
+            msg_bodies = result["correctness_message"] + result["legality_message"]
+        elif args.verbose:
+            msg_bodies = result["legality_pass_message"]
+
+        total_points += earn_points
+
+        if len(msg_bodies) == 0:
+            print(f"{msg_header:<25}{msg_mid}")
         else:
-            if len(operators) > true_ans[function_name]["maxop"]:
-                print(
-                    f"Exceed maxops, your ops are {len(operators)} > max ops {true_ans[function_name]['maxop']}, name:{function_name}, point:{0}"
-                )
-                if real_ans[function_name] != 0:
-                    real_ans["Total"] -= true_ans[function_name]["rating"]
-            else:
-                if real_ans[function_name] == 0:
-                    print(
-                        f"Please look at result.txt, you have some errors. name: {function_name}, point: {0}"
-                    )
+            print(f"{msg_header:<25}{msg_mid:<8}", end="")
+            for i, msg_body in enumerate(msg_bodies):
+                if i == 0:
+                    if not is_pass:
+                        print(f"error{i+1}: {msg_body}")
+                    else:
+                        print(f"detail: {msg_body}")
                 else:
-                    print(
-                        f"Pass, great!!! name: {function_name}, point: {real_ans[function_name]}"
-                    )
+                    print(f"{' ' *33}error{i+1}: {msg_body}")
+
+    max_points = sum(problem_info["rating"] for problem_info in problem_infos.values())
+    print(f"Total points: {total_points}/{max_points}")
+
+    # AutoGrader
+    with open(".autograder_result", "w") as f:
+        f.write(f"{total_points}")
 
 
-real_ans = {}
-with open("result.txt", "w") as f:
-    out = subprocess.run(["make", "clean"])
-    out = subprocess.Popen(["make"]).wait()
-    out = subprocess.Popen(["./btest"], stderr=f, stdout=f).wait()
-    with open("result.txt", "r") as rd:
-        for i in rd.readlines():
-            if "Score" in i:
-                continue
-            if "Total points" in i:
-                matches = re.findall(r"\b\w+\b|\b\d+\b", i)
-                real_ans[matches[0]] = int(matches[2])
-            elif "ERROR" in i:
-                matches = re.findall(r"\b\w+\b|\b\d+\b", i)
-                real_ans[matches[2]] = 0
-            elif "Gives" in i:
-                continue
-            else:
-                matches = re.findall(r"\b\w+\b|\b\d+\b", i)
-                real_ans[matches[-1]] = int(matches[0])
-for i in true_ans.keys():
-    test_score(i, real_ans)
-print(f"Total Points:{ real_ans['Total'] }")
-
-
-# AutoGrader
-with open(".autograder_result", "w") as f:
-    f.write(f"{real_ans['Total']}")
+if __name__ == "__main__":
+    main()

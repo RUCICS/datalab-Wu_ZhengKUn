@@ -1,4 +1,3 @@
-[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/HwtZfpI1)
 # DataLab
 
 ```
@@ -11,7 +10,7 @@
     \|_______|\|__|\|__|    \|__|  \|__|\|__|\|_______|\|__|\|__|\|_______|
 ```
 
-RUC DataLab
+模板仓库：[RUC DataLab](https://github.com/RUCICS/datalab)
 
 ## 项目编译与环境指南
 
@@ -33,15 +32,17 @@ sudo apt-get remove gcc g++
 
 --------
 
-Python 编译环境，我们演示 Virtualenv 下的配置方法，如果你使用 Conda 可以自行配置类似的环境出来
+Python 编译环境已弃用，现在你不需要执行任何指令来配置，如果你第一次读到这个文档，请忽略这一部分。对于服务器用户，你不需要执行任何配置。
 
-```bash
-sudo apt-get update
-sudo apt-get install python3 python3-pip python3-venv
-python3 -m venv venv # 如果你在我们提供的服务器上进行本实验，这一步请从这里开始
-. venv/bin/activate
-pip install pycparser -i https://mirrors.aliyun.com/pypi/simple/
-```
+> Python 编译环境，我们演示 Virtualenv 下的配置方法，如果你使用 Conda 可以自行配置类似的环境出来
+> 
+> ```bash
+> sudo apt-get update
+> sudo apt-get install python3 python3-pip python3-venv
+> python3 -m venv venv # 如果你在我们提供的服务器上进行本实验，这一步请从这里开始
+> . venv/bin/activate
+> pip install pycparser -i https://mirrors.aliyun.com/pypi/simple/
+> ```
 
 --------
 
@@ -59,6 +60,24 @@ pip install pycparser -i https://mirrors.aliyun.com/pypi/simple/
 
 ```bash
 make
+```
+
+> 如果你不懂什么是 `make`，请询问 AI 生成工具 “什么是 make，我应该在什么时候执行 make，make 的原理是什么”
+
+### Quick Start
+
+```bash
+# 在我们的服务器上，不需要执行这一行
+sudo apt-get update && sudo apt-get install build-essential gcc-multilib
+
+# 其中 panjd123 改成你的用户名
+git clone git@github.com:RUCICS/datalab-panjd123.git
+
+cd datalab-panjd123
+
+make
+python3 test.py
+# 然后你应该看到最后一行输出 Total Points:0 的字样
 ```
 
 ## 实验简述
@@ -100,6 +119,7 @@ int bitAnd(int x, int y) {
 - 禁止使用控制流语句，比如 `if`, `else`, `for`, `while`，除非题目允许
 - 禁止使用非位运算符号，比如 `&&`, `||`, `-`, `?:`,`!`, `>`, `==` 除非题目允许
 - 禁止使用其他不在 `Legal ops` 中的操作符
+- 特别说明，例如 `<<=`, `++` 这类 `x = x ? 1` 的 `?=` 符号，我们视作 `?` 符号，换句话说，只要 `?` 在 `Legal ops` 里，则 `?=` 也在。
 - 禁止超过 `Max ops` 个符号数
 - 禁止使用函数，或调用任何函数
 - 禁止使用宏
@@ -111,20 +131,46 @@ int bitAnd(int x, int y) {
 - 禁止使用 Undefined Behavior，比如对一个 32 位数逻辑右移超过 31 位，你应该假设我们的机器会在这时候返回不确定的结果，不得利用 Undefined Behavior，以免我们跨平台编译的时候结果不一致
 - 我们要求你的编译不能有任何警告，在迫不得已的情况下，请尽量用一些代码内编译器指令来消除警告，比如 `__attribute__((unused))`
 - 禁止修改除了 `bits.c` 以外的文件
+- 禁止给 `bits.c` 文件添加任何头文件，这会导致测试错误。这不影响你使用 `printf` 函数，
+但使用 `printf` 函数会与 `test.py` 脚本冲突，你可以使用下文的 `btest` 脚本来调试正确性，
+正确性通过后再删除 `printf` 使用 `test.py` 脚本来测试合规性
 
 其他事项：
 
-- 符号数计数不包括赋值等号 `=` 和控制流语句如 `if`
+- 符号数计数不包括赋值等号 `=` 和控制流语句如 `if`, `for` 这种关键字，但例如条件表达式内的符号还是会被计算
 
 ### 如何评测
 
 ```bash
-. venv/bin/activate
 python3 test.py
+python3 test.py -V # 显示更多信息
 ```
 
-我们提供了一个 `test.py` 脚本，当你完成实验时可以在你自己机器上直接运行该指令。如果出现最大操作数、合规性错误会直接显示错误信息到屏幕上，而正确性信息则会被记录在 `result.txt` 文件中。
-需要注意，只有当你 `bits.c` 文件编译没有问题（即不存在语法问题）时，`test.py` 才会显示你答题的相关信息。
+我们提供了一个 `test.py` 脚本，它完成以下判断：
+
+- 尝试编译你的代码
+- 测试正确性，即是否能返回函数正确的结果
+- 测试合规性，即是否满足题目对符号数等的要求
+
+该脚本要求你的代码不能包含输出到 stdout 的调试输出，如果你需要调试，请用下文的 `btest` 脚本。
+通常情况下，你可以只用 `btest` 测试，直到所有函数都能返回正确结果，再回到 `test.py` 测试。
+
+输出示例：
+
+```bash
+bitXor          1/1:     PASS    detail: Pass using 7 operations including {'~', '&'} and {'int'}.
+samesign        2/2:     PASS    detail: Pass using 8 operations including {'&&', '>>', '^', '!'} and {'if', 'int'}.
+logtwo          0/4:     FAIL    error1: Test logtwo(1[0x1]) failed. Gives 2[0x2]. Should be 0[0x0]
+                                 error2: Using illegal operations: {'+', '<', 'for'}.
+                                 error3: Using excessive operations, you use 14 > max ops 12.
+                                 error4: Using type conversion.
+...
+Total points: 3
+```
+
+> 该输出展示了一份正确通过了前两个函数，但是 logtwo 函数实现中有诸多错误的作业。
+
+> `-V` 参数会显示通过的函数所用操作符数量，但可能导致你的报错不明显，默认我们只显示 FAIL 的信息。
 
 ### 如何使用我们提供的工具
 
@@ -132,9 +178,17 @@ python3 test.py
 
 `btest` 是正确性检验工具，是 `test.py` 脚本的一部分，你可以根据需要单独使用它以方便调试。
 
-比如以指定参数调用某个函数测试。
+执行正确性测试
 
 ```bash
+make
+./btest
+```
+
+以指定参数调用某个函数测试：
+
+```bash
+make
 ./btest -1 1 -2 2 -f bitXor # bitXor(1, 2)
 ./btest -h # 查看 btest 的其他功能
 ```

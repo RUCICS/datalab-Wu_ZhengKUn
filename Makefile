@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -O -Wall -m32
+CFLAGS = -O0 -Wall -std=gnu99
 LIBS = -lm
 
 all: btest fshow ishow
@@ -18,4 +18,4 @@ btestexplicit:
 	$(CC) $(CFLAGS) $(LIBS) -o btest bits.c btest.c decl.c tests.c 
 
 clean:
-	rm -f *.o btest fshow ishow *~
+	rm -f *.o btest fshow ishow *~ yacctab.py lextab.py result.txt .autograder_result

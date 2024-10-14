@@ -124,11 +124,20 @@ unsigned test_float_i2f(int x) {
     return f2u(f);
 }
 int test_float64_f2i(unsigned uf1, unsigned uf2) {
-    long long int x = (uf1) << 31;
-    x = x & (uf2);
-    double y = x;
-    int r = y;
-    return r;
+      unsigned sign = uf2 >> 31;
+      unsigned exp = (uf2 >> 20) & 0x7FF;
+      unsigned val = 0x80000000u | ((uf2 & 0xFFFFF) << 11) | (uf1 >> 21);
+      if (exp < 1023) {
+        return 0;
+      }
+      if (exp > 1054)
+        return 0x80000000u;
+      val = val >> (1054 - exp);
+      if (sign) {
+        return val > 0x80000000u ? 0x80000000u : -val;
+      } else {
+        return val > 0x7FFFFFFF ? 0x80000000u : val;
+      }
 }
 int test_leftBitCount(int x) {
     int result = 0;

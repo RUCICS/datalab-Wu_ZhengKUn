@@ -144,8 +144,7 @@ unsigned reverse(unsigned x)
    int logicalShift(int x, int n)
 {
     int result=0;
-    int mask=0xffffffff>>n;//得到一个掩码，前n位是0，后32-n位是1
-    result=(x>>n)&mask;
+    int mask=0xffffffff>>n;
     result=(x>>n)&mask;
     return result;
 }
